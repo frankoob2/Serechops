@@ -1,1 +1,7 @@
+pyscreenshot
 stashapp-tools
+tabulate
+psutil
+pyscreenshot
+Xlib 
+pynput
